@@ -177,8 +177,10 @@ export function createTrainStationScene(container) {
 	const keyboardState = {
 		forward: false,
 		backward: false,
-		turnLeft: false,
-		turnRight: false,
+		left: false,
+		right: false,
+		angleDown: false,
+		angleUp: false,
 	}
 
 	let trainAnimationPaused = false
@@ -288,9 +290,31 @@ export function createTrainStationScene(container) {
 		controls.target.add(offset)
 	}
 
-	function rotateCamera(angle) {
+	function moveCameraSideways(distance) {
+		const direction = new Vector3()
+		camera.getWorldDirection(direction)
+		direction.y = 0
+		direction.normalize()
+
+		const offset = direction.cross(new Vector3(0, 1, 0)).multiplyScalar(distance)
+		camera.position.add(offset)
+		controls.target.add(offset)
+	}
+
+	function tiltCamera(angle) {
 		const offset = camera.position.clone().sub(controls.target)
-		offset.applyAxisAngle(new Vector3(0, 1, 0), angle)
+		const horizontalDistance = Math.hypot(offset.x, offset.z)
+		const minPolarAngle = Math.max(controls.minPolarAngle, 0.1)
+		let polarAngle = Math.atan2(horizontalDistance, offset.y)
+		polarAngle = Math.min(controls.maxPolarAngle, Math.max(minPolarAngle, polarAngle + angle))
+
+		const radius = offset.length()
+		const azimuth = Math.atan2(offset.x, offset.z)
+		offset.set(
+			radius * Math.sin(polarAngle) * Math.sin(azimuth),
+			radius * Math.cos(polarAngle),
+			radius * Math.sin(polarAngle) * Math.cos(azimuth),
+		)
 		camera.position.copy(controls.target).add(offset)
 		camera.lookAt(controls.target)
 	}
@@ -303,7 +327,7 @@ export function createTrainStationScene(container) {
 		}
 
 		const moveSpeed = 12 * deltaTime
-		const turnSpeed = 1.4 * deltaTime
+		const angleSpeed = 1.4 * deltaTime
 		let keyboardActive = false
 
 		if (keyboardState.forward) {
@@ -316,13 +340,23 @@ export function createTrainStationScene(container) {
 			keyboardActive = true
 		}
 
-		if (keyboardState.turnLeft) {
-			rotateCamera(turnSpeed)
+		if (keyboardState.left) {
+			moveCameraSideways(-moveSpeed)
 			keyboardActive = true
 		}
 
-		if (keyboardState.turnRight) {
-			rotateCamera(-turnSpeed)
+		if (keyboardState.right) {
+			moveCameraSideways(moveSpeed)
+			keyboardActive = true
+		}
+
+		if (keyboardState.angleDown) {
+			tiltCamera(angleSpeed)
+			keyboardActive = true
+		}
+
+		if (keyboardState.angleUp) {
+			tiltCamera(-angleSpeed)
 			keyboardActive = true
 		}
 
@@ -510,12 +544,22 @@ export function createTrainStationScene(container) {
 		}
 
 		if (event.code === 'KeyA') {
-			keyboardState.turnLeft = true
+			keyboardState.left = true
 			return
 		}
 
 		if (event.code === 'KeyD') {
-			keyboardState.turnRight = true
+			keyboardState.right = true
+			return
+		}
+
+		if (event.code === 'KeyQ') {
+			keyboardState.angleDown = true
+			return
+		}
+
+		if (event.code === 'KeyE') {
+			keyboardState.angleUp = true
 		}
 	}
 	const handleKeyUp = (event) => {
@@ -528,14 +572,28 @@ export function createTrainStationScene(container) {
 		}
 
 		if (event.code === 'KeyA') {
-			keyboardState.turnLeft = false
+			keyboardState.left = false
 		}
 
 		if (event.code === 'KeyD') {
-			keyboardState.turnRight = false
+			keyboardState.right = false
 		}
 
-		cinematicCamera.keyboardControlling = keyboardState.forward || keyboardState.backward || keyboardState.turnLeft || keyboardState.turnRight
+		if (event.code === 'KeyQ') {
+			keyboardState.angleDown = false
+		}
+
+		if (event.code === 'KeyE') {
+			keyboardState.angleUp = false
+		}
+
+		cinematicCamera.keyboardControlling =
+			keyboardState.forward ||
+			keyboardState.backward ||
+			keyboardState.left ||
+			keyboardState.right ||
+			keyboardState.angleDown ||
+			keyboardState.angleUp
 		cinematicCamera.isUserControlling = cinematicCamera.mouseControlling || cinematicCamera.keyboardControlling
 	}
 	const handleControlsStart = () => {
