@@ -3,6 +3,7 @@ import {
 	BoxGeometry,
 	Box3,
 	Color,
+	CylinderGeometry,
 	DirectionalLight,
 	DoubleSide,
 	Fog,
@@ -365,20 +366,84 @@ export function createTrainStationScene(container) {
 	}
 
 	function createTrainHeadlight(train) {
-		const headlight = new SpotLight(0xfff3c4, 7, 80, Math.PI / 5, 0.35, 1.2)
-		headlight.castShadow = true
-		headlight.shadow.mapSize.set(1024, 1024)
+		train.updateWorldMatrix(true, true)
 
-		const box = new Box3().setFromObject(train)
-		const size = new Vector3()
-		box.getSize(size)
+		const railOrigin = new Vector3()
+		const railForwardPoint = new Vector3(1, 0, 0)
+		if (train.parent) {
+			train.parent.localToWorld(railOrigin)
+			train.parent.localToWorld(railForwardPoint)
+		} else {
+			train.localToWorld(railOrigin)
+			train.localToWorld(railForwardPoint)
+		}
 
-		const noseX = size.x / 2
-		headlight.position.set(noseX, 1.5, -8)
-		headlight.target.position.set(noseX + 0, 1.5, -30)
-		train.add(headlight)
-		train.add(headlight.target)
-		return headlight
+		const railForward = railForwardPoint.sub(railOrigin).normalize()
+		const headlightReferences = []
+		train.traverse((object) => {
+			if (!object.isMesh || !/external_lights/i.test(object.name)) {
+				return
+			}
+
+			const referenceBox = new Box3().setFromObject(object)
+			const worldCenter = new Vector3()
+			referenceBox.getCenter(worldCenter)
+			headlightReferences.push({
+				localCenter: train.worldToLocal(worldCenter.clone()),
+				score: worldCenter.dot(railForward),
+			})
+		})
+
+		headlightReferences.sort((a, b) => b.score - a.score)
+		const anchorPosition = headlightReferences[0]?.localCenter.clone() ?? new Vector3(0, 5, -40)
+		const forwardSign = anchorPosition.z < 0 ? -1 : 1
+		anchorPosition.y += 1.25
+		anchorPosition.z += forwardSign * 0.55
+
+		const headlightAssembly = new Group()
+		headlightAssembly.name = 'EngineHeadlight'
+		headlightAssembly.position.copy(anchorPosition)
+
+		const rim = new Mesh(
+			new CylinderGeometry(0.42, 0.48, 0.18, 40),
+			new MeshStandardMaterial({
+				color: 0x2c3237,
+				metalness: 0.9,
+				roughness: 0.22,
+			}),
+		)
+		rim.rotation.x = Math.PI / 2
+		rim.castShadow = true
+		headlightAssembly.add(rim)
+
+		const lensMaterial = new MeshStandardMaterial({
+			color: 0xffefbf,
+			emissive: 0xffd36c,
+			emissiveIntensity: 2.2,
+			metalness: 0.08,
+			roughness: 0.12,
+		})
+		const lens = new Mesh(new CylinderGeometry(0.31, 0.31, 0.2, 40), lensMaterial)
+		lens.rotation.x = Math.PI / 2
+		lens.position.z = forwardSign * 0.04
+		headlightAssembly.add(lens)
+
+		const headlightBeam = new SpotLight(0xfff3c4, 5.2, 62, Math.PI / 7, 0.5, 1.35)
+		headlightBeam.name = 'EngineHeadlightBeam'
+		headlightBeam.position.copy(anchorPosition)
+		headlightBeam.position.z += forwardSign * 0.12
+		headlightBeam.target.position.copy(anchorPosition)
+		headlightBeam.target.position.y -= 0.5
+		headlightBeam.target.position.z += forwardSign * 70
+		headlightBeam.castShadow = true
+		headlightBeam.shadow.mapSize.set(1024, 1024)
+
+		headlightAssembly.userData.beam = headlightBeam
+		headlightAssembly.userData.lensMaterial = lensMaterial
+		train.add(headlightAssembly)
+		train.add(headlightBeam)
+		train.add(headlightBeam.target)
+		return headlightAssembly
 	}
 
 	function updateCinematicCamera(deltaTime) {
@@ -408,7 +473,19 @@ export function createTrainStationScene(container) {
 			return
 		}
 
-		trainMotion.headlight.visible = !trainMotion.headlight.visible
+		const { beam, lensMaterial } = trainMotion.headlight.userData
+		const isOn = beam ? beam.visible : trainMotion.headlight.visible
+		const nextIsOn = !isOn
+
+		if (beam) {
+			beam.visible = nextIsOn
+		} else {
+			trainMotion.headlight.visible = nextIsOn
+		}
+
+		if (lensMaterial) {
+			lensMaterial.emissiveIntensity = nextIsOn ? 2.2 : 0.1
+		}
 	}
 
 	function updateTrainMotion(deltaTime) {
