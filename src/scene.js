@@ -870,12 +870,18 @@ export function createTrainStationScene(container) {
 		headlight: null,
 		state: 'outside',
 		elapsed: 0,
-		outsidePosition: -78,
+		outsidePosition: -86,
 		insidePosition: -8,
-		exitPosition: 78,
-		approachDuration: 9,
-		departDuration: 9,
-		stopDuration: 3,
+		exitPosition: 86,
+		currentSpeed: 0,
+		cruiseSpeed: 12,
+		acceleration: 2.35,
+		braking: 3.15,
+		stopDuration: 4.5,
+		outsideDelay: 1.6,
+		stopBuffer: 0.18,
+		stopSpeed: 0.18,
+		ridePhase: 0,
 	}
 
 	function resetTrainMotion() {
@@ -885,9 +891,41 @@ export function createTrainStationScene(container) {
 
 		trainMotion.state = 'entering'
 		trainMotion.elapsed = 0
+		trainMotion.currentSpeed = trainMotion.cruiseSpeed * 0.72
+		trainMotion.ridePhase = 0
 		trainMotion.train.position.x = trainMotion.outsidePosition
 		trainMotion.train.position.y = 0
 		trainMotion.train.position.z = 0
+	}
+
+	function moveValueToward(current, target, maxStep) {
+		if (current < target) {
+			return Math.min(current + maxStep, target)
+		}
+
+		return Math.max(current - maxStep, target)
+	}
+
+	function getArrivalTargetSpeed(remainingDistance) {
+		if (remainingDistance <= trainMotion.stopBuffer) {
+			return 0
+		}
+
+		const brakeDistance = Math.max(remainingDistance - trainMotion.stopBuffer, 0)
+		return Math.min(trainMotion.cruiseSpeed, Math.sqrt(2 * trainMotion.braking * brakeDistance))
+	}
+
+	function applyTrainRideMotion(deltaTime) {
+		if (!trainMotion.train) {
+			return
+		}
+
+		const motionAmount = Math.min(trainMotion.currentSpeed / trainMotion.cruiseSpeed, 1)
+		trainMotion.ridePhase += deltaTime * (1.6 + trainMotion.currentSpeed * 0.45)
+		trainMotion.train.position.y = (
+			Math.sin(trainMotion.ridePhase) * 0.018 +
+			Math.sin(trainMotion.ridePhase * 2.7) * 0.006
+		) * motionAmount
 	}
 
 	function setCameraMode(mode) {
@@ -1130,22 +1168,40 @@ export function createTrainStationScene(container) {
 			return
 		}
 
-		trainMotion.elapsed += deltaTime
+		const frameTime = Math.min(deltaTime, 0.12)
+		trainMotion.elapsed += frameTime
 
 		if (trainMotion.state === 'entering') {
-			const progress = Math.min(trainMotion.elapsed / trainMotion.approachDuration, 1)
-			trainMotion.train.position.x = trainMotion.outsidePosition + (trainMotion.insidePosition - trainMotion.outsidePosition) * progress
+			const remainingDistance = trainMotion.insidePosition - trainMotion.train.position.x
+			const targetSpeed = getArrivalTargetSpeed(remainingDistance)
+			const speedChangeRate = trainMotion.currentSpeed > targetSpeed
+				? trainMotion.braking
+				: trainMotion.acceleration
 
-			if (progress >= 1) {
+			trainMotion.currentSpeed = moveValueToward(
+				trainMotion.currentSpeed,
+				targetSpeed,
+				speedChangeRate * frameTime,
+			)
+			trainMotion.train.position.x += trainMotion.currentSpeed * frameTime
+			applyTrainRideMotion(frameTime)
+
+			if (
+				trainMotion.train.position.x >= trainMotion.insidePosition ||
+				(remainingDistance <= trainMotion.stopBuffer && trainMotion.currentSpeed <= trainMotion.stopSpeed)
+			) {
 				trainMotion.state = 'stopped'
 				trainMotion.elapsed = 0
+				trainMotion.currentSpeed = 0
 				trainMotion.train.position.x = trainMotion.insidePosition
+				trainMotion.train.position.y = 0
 			}
 			return
 		}
 
 		if (trainMotion.state === 'stopped') {
 			trainMotion.train.position.x = trainMotion.insidePosition
+			trainMotion.train.position.y = 0
 
 			if (trainMotion.elapsed >= trainMotion.stopDuration) {
 				trainMotion.state = 'leaving'
@@ -1155,22 +1211,31 @@ export function createTrainStationScene(container) {
 		}
 
 		if (trainMotion.state === 'leaving') {
-			const progress = Math.min(trainMotion.elapsed / trainMotion.departDuration, 1)
-			trainMotion.train.position.x = trainMotion.insidePosition + (trainMotion.exitPosition - trainMotion.insidePosition) * progress
+			trainMotion.currentSpeed = moveValueToward(
+				trainMotion.currentSpeed,
+				trainMotion.cruiseSpeed,
+				trainMotion.acceleration * frameTime,
+			)
+			trainMotion.train.position.x += trainMotion.currentSpeed * frameTime
+			applyTrainRideMotion(frameTime)
 
-			if (progress >= 1) {
+			if (trainMotion.train.position.x >= trainMotion.exitPosition) {
 				trainMotion.state = 'outside'
 				trainMotion.elapsed = 0
+				trainMotion.currentSpeed = trainMotion.cruiseSpeed
 				trainMotion.train.position.x = trainMotion.exitPosition
+				trainMotion.train.position.y = 0
 			}
 			return
 		}
 
 		if (trainMotion.state === 'outside') {
 			trainMotion.train.position.x = trainMotion.exitPosition
-			trainMotion.state = 'entering'
-			trainMotion.elapsed = 0
-			trainMotion.train.position.x = trainMotion.outsidePosition
+			trainMotion.train.position.y = 0
+
+			if (trainMotion.elapsed >= trainMotion.outsideDelay) {
+				resetTrainMotion()
+			}
 		}
 	}
 
