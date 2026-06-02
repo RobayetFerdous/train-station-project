@@ -34,9 +34,52 @@ const CAMERA_MODE = {
 	FOLLOW: 'follow',
 }
 
-function createSky(scene) {
-	scene.background = new Color(0xaed8ff)
-	scene.fog = new Fog(0xaed8ff, 32, 95)
+const ENVIRONMENT_MODE = {
+	DAY: 'day',
+	NIGHT: 'night',
+}
+
+const ENVIRONMENT_PRESETS = {
+	[ENVIRONMENT_MODE.DAY]: {
+		skyColor: 0xaed8ff,
+		fogColor: 0xaed8ff,
+		fogNear: 32,
+		fogFar: 95,
+		ambientColor: 0xffffff,
+		ambientIntensity: 1.8,
+		directionalColor: 0xfff1d8,
+		directionalIntensity: 3,
+		directionalPosition: [18, 32, 12],
+		headlightIntensity: 5.2,
+		headlightLensIntensity: 2.2,
+	},
+	[ENVIRONMENT_MODE.NIGHT]: {
+		skyColor: 0x050b18,
+		fogColor: 0x071120,
+		fogNear: 26,
+		fogFar: 78,
+		ambientColor: 0x8ea8df,
+		ambientIntensity: 0.62,
+		directionalColor: 0xb7c9ff,
+		directionalIntensity: 0.78,
+		directionalPosition: [-18, 26, -22],
+		headlightIntensity: 8.4,
+		headlightLensIntensity: 3.4,
+	},
+}
+
+function getEnvironmentPreset(mode) {
+	return ENVIRONMENT_PRESETS[mode] ?? ENVIRONMENT_PRESETS[ENVIRONMENT_MODE.DAY]
+}
+
+function applySceneAtmosphere(scene, mode) {
+	const preset = getEnvironmentPreset(mode)
+	scene.background = new Color(preset.skyColor)
+	scene.fog = new Fog(preset.fogColor, preset.fogNear, preset.fogFar)
+}
+
+function createSky(scene, mode = ENVIRONMENT_MODE.DAY) {
+	applySceneAtmosphere(scene, mode)
 }
 
 function createGround(scene) {
@@ -112,7 +155,10 @@ function createRenderer(container) {
 
 export function createTrainStationScene(container) {
 	const scene = new Scene()
-	createSky(scene)
+	const environmentMode = {
+		current: ENVIRONMENT_MODE.DAY,
+	}
+	createSky(scene, environmentMode.current)
 	createGround(scene)
 	const tracks = createRailwayTracks(scene)
 
@@ -143,6 +189,44 @@ export function createTrainStationScene(container) {
 	directionalLight.shadow.camera.top = 50
 	directionalLight.shadow.camera.bottom = -50
 	scene.add(directionalLight)
+
+	function updateTrainHeadlightLighting() {
+		if (!trainMotion.headlight) {
+			return
+		}
+
+		const preset = getEnvironmentPreset(environmentMode.current)
+		const { beam, lensMaterial } = trainMotion.headlight.userData
+		const isOn = beam ? beam.visible : trainMotion.headlight.visible
+
+		if (beam) {
+			beam.intensity = preset.headlightIntensity
+		}
+
+		if (lensMaterial) {
+			lensMaterial.emissiveIntensity = isOn ? preset.headlightLensIntensity : 0.1
+		}
+	}
+
+	function setEnvironmentMode(mode) {
+		const nextMode = mode === ENVIRONMENT_MODE.NIGHT ? ENVIRONMENT_MODE.NIGHT : ENVIRONMENT_MODE.DAY
+		const preset = getEnvironmentPreset(nextMode)
+
+		environmentMode.current = nextMode
+		applySceneAtmosphere(scene, nextMode)
+		ambientLight.color.set(preset.ambientColor)
+		ambientLight.intensity = preset.ambientIntensity
+		directionalLight.color.set(preset.directionalColor)
+		directionalLight.intensity = preset.directionalIntensity
+		directionalLight.position.set(...preset.directionalPosition)
+		updateTrainHeadlightLighting()
+
+		return environmentMode.current
+	}
+
+	function toggleEnvironmentMode() {
+		return setEnvironmentMode(environmentMode.current === ENVIRONMENT_MODE.DAY ? ENVIRONMENT_MODE.NIGHT : ENVIRONMENT_MODE.DAY)
+	}
 
 	const controls = new OrbitControls(camera, renderer.domElement)
 	controls.target.set(0, 4, 6)
@@ -428,7 +512,14 @@ export function createTrainStationScene(container) {
 		lens.position.z = forwardSign * 0.04
 		headlightAssembly.add(lens)
 
-		const headlightBeam = new SpotLight(0xfff3c4, 5.2, 62, Math.PI / 7, 0.5, 1.35)
+		const headlightBeam = new SpotLight(
+			0xfff3c4,
+			getEnvironmentPreset(environmentMode.current).headlightIntensity,
+			62,
+			Math.PI / 7,
+			0.5,
+			1.35,
+		)
 		headlightBeam.name = 'EngineHeadlightBeam'
 		headlightBeam.position.copy(anchorPosition)
 		headlightBeam.position.z += forwardSign * 0.12
@@ -484,7 +575,9 @@ export function createTrainStationScene(container) {
 		}
 
 		if (lensMaterial) {
-			lensMaterial.emissiveIntensity = nextIsOn ? 2.2 : 0.1
+			lensMaterial.emissiveIntensity = nextIsOn
+				? getEnvironmentPreset(environmentMode.current).headlightLensIntensity
+				: 0.1
 		}
 	}
 
@@ -551,6 +644,7 @@ export function createTrainStationScene(container) {
 		tracks.add(train)
 		trainMotion.train = train
 		trainMotion.headlight = createTrainHeadlight(train)
+		updateTrainHeadlightLighting()
 		resetTrainMotion()
 
 		fitModelToLength(station, 24)
@@ -698,8 +792,13 @@ export function createTrainStationScene(container) {
 		getCameraMode() {
 			return cameraMode.current
 		},
+		getEnvironmentMode() {
+			return environmentMode.current
+		},
 		setCameraMode,
 		toggleCameraMode,
+		setEnvironmentMode,
+		toggleEnvironmentMode,
 		dispose() {
 			disposed = true
 			window.cancelAnimationFrame(frameId)
