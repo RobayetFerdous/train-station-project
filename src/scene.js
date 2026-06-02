@@ -12,7 +12,6 @@ import {
 	Mesh,
 	Clock,
 	PerspectiveCamera,
-	PointLight,
 	SpotLight,
 	PlaneGeometry,
 	Scene,
@@ -89,12 +88,23 @@ const STREET_LIGHT_STATION_PLACEMENTS = [
 ]
 const STREET_LIGHTING_PRESETS = {
 	[ENVIRONMENT_MODE.DAY]: {
-		pointIntensity: 0,
+		spotIntensity: 0,
 	},
 	[ENVIRONMENT_MODE.NIGHT]: {
-		pointIntensity: 2.4,
+		spotIntensity: 4.8,
 	},
 }
+
+const STREET_LIGHT_HEADS = [
+	{
+		position: new Vector3(-0.72, STREET_LIGHT_HEIGHT * 0.82, 0),
+		target: new Vector3(-2.25, 0, 1.05),
+	},
+	{
+		position: new Vector3(0.72, STREET_LIGHT_HEIGHT * 0.82, 0),
+		target: new Vector3(2.25, 0, 1.05),
+	},
+]
 
 function getEnvironmentPreset(mode) {
 	return ENVIRONMENT_PRESETS[mode] ?? ENVIRONMENT_PRESETS[ENVIRONMENT_MODE.DAY]
@@ -625,16 +635,26 @@ function getStreetLightLightingPreset(mode) {
 	return STREET_LIGHTING_PRESETS[mode] ?? STREET_LIGHTING_PRESETS[ENVIRONMENT_MODE.DAY]
 }
 
-function createStreetLightGlow(name, mode) {
+function createStreetLightBeam(name, mode, index) {
 	const lighting = getStreetLightLightingPreset(mode)
-	const glowPositionY = STREET_LIGHT_HEIGHT * 0.88
-	const pointLight = new PointLight(0xffd899, lighting.pointIntensity, 15, 1.7)
-	pointLight.name = `${name}_Glow`
-	pointLight.position.set(0, glowPositionY, 0)
-	pointLight.visible = lighting.pointIntensity > 0
-	pointLight.castShadow = false
+	const head = STREET_LIGHT_HEADS[index]
+	const beam = new SpotLight(
+		0xffd28a,
+		lighting.spotIntensity,
+		18,
+		Math.PI / 5.8,
+		0.72,
+		1.55,
+	)
+	beam.name = `${name}_StreetLightBeam_${index + 1}`
+	beam.position.copy(head.position)
+	beam.target.name = `${name}_StreetLightTarget_${index + 1}`
+	beam.target.position.copy(head.target)
+	beam.visible = lighting.spotIntensity > 0
+	beam.target.visible = false
+	beam.castShadow = false
 
-	return { pointLight }
+	return beam
 }
 
 function createStreetLightInstance(streetLightLamp, name, mode) {
@@ -645,10 +665,13 @@ function createStreetLightInstance(streetLightLamp, name, mode) {
 	groundAndCenterModel(lamp)
 	placeModelOnSurface(lamp, 0)
 
-	const { pointLight } = createStreetLightGlow(name, mode)
-	lamp.add(pointLight)
+	const beams = STREET_LIGHT_HEADS.map((_, index) => createStreetLightBeam(name, mode, index))
+	beams.forEach((beam) => {
+		lamp.add(beam)
+		lamp.add(beam.target)
+	})
 	lamp.userData.streetLightLighting = {
-		pointLight,
+		beams,
 	}
 
 	return lamp
@@ -726,8 +749,10 @@ function setStreetLightLighting(streetLightEnvironment, mode) {
 			return
 		}
 
-		streetLightLighting.pointLight.intensity = lighting.pointIntensity
-		streetLightLighting.pointLight.visible = lighting.pointIntensity > 0
+		streetLightLighting.beams.forEach((beam) => {
+			beam.intensity = lighting.spotIntensity
+			beam.visible = lighting.spotIntensity > 0
+		})
 	})
 }
 
