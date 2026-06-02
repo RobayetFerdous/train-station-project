@@ -5,24 +5,67 @@ const app = document.querySelector('#app')
 
 app.innerHTML = `
   <main class="page-shell">
-    <section class="hero-panel">
-      <div class="view-toolbar">
-        <button id="environment-toggle" class="mode-toggle environment-toggle" type="button" data-mode="day" aria-pressed="false">
-          <span class="mode-toggle__option" data-environment-option="day">Day</span>
-          <span class="mode-toggle__option" data-environment-option="night">Night</span>
-        </button>
-        <button id="view-toggle" class="mode-toggle view-toggle" type="button" data-mode="free" aria-pressed="false">
-          <span class="mode-toggle__option" data-view-option="free">Free cam</span>
-          <span class="mode-toggle__option" data-view-option="orbit">Station orbit</span>
-        </button>
-      </div>
-      <p class="eyebrow">Three.js train station</p>
-      <h1>Responsive station scene</h1>
-      <p class="intro">
-        A lightweight Three.js setup with perspective camera, renderer,
-        lighting, orbit controls, sky background, and resize handling.
-      </p>
-    </section>
+    <div class="sidebar-stack">
+      <section class="hero-panel">
+        <div class="view-toolbar">
+          <button id="environment-toggle" class="mode-toggle environment-toggle" type="button" data-mode="day" aria-pressed="false">
+            <span class="mode-toggle__option" data-environment-option="day">Day</span>
+            <span class="mode-toggle__option" data-environment-option="night">Night</span>
+          </button>
+          <button id="view-toggle" class="mode-toggle view-toggle" type="button" data-mode="free" aria-pressed="false">
+            <span class="mode-toggle__option" data-view-option="free">Free cam</span>
+            <span class="mode-toggle__option" data-view-option="orbit">Station orbit</span>
+          </button>
+        </div>
+        <p class="eyebrow">Three.js train station</p>
+        <h1>Responsive station scene</h1>
+        <p class="intro">
+          A lightweight Three.js setup with perspective camera, renderer,
+          lighting, orbit controls, sky background, and resize handling.
+        </p>
+      </section>
+
+      <details class="guide-panel">
+        <summary class="guide-summary">
+          <span class="guide-summary__eyebrow">User guide</span>
+          <span id="keyboard-guide-title" class="guide-summary__title">Keyboard controls</span>
+        </summary>
+        <dl class="key-guide" aria-label="Keyboard controls">
+          <div class="key-guide__item">
+            <dt><kbd>W</kbd></dt>
+            <dd>Move camera forward</dd>
+          </div>
+          <div class="key-guide__item">
+            <dt><kbd>S</kbd></dt>
+            <dd>Move camera backward</dd>
+          </div>
+          <div class="key-guide__item">
+            <dt><kbd>A</kbd></dt>
+            <dd>Move camera left</dd>
+          </div>
+          <div class="key-guide__item">
+            <dt><kbd>D</kbd></dt>
+            <dd>Move camera right</dd>
+          </div>
+          <div class="key-guide__item">
+            <dt><kbd>Q</kbd></dt>
+            <dd>Tilt camera down</dd>
+          </div>
+          <div class="key-guide__item">
+            <dt><kbd>E</kbd></dt>
+            <dd>Tilt camera up</dd>
+          </div>
+          <div class="key-guide__item">
+            <dt><kbd>Space</kbd></dt>
+            <dd>Pause or resume train</dd>
+          </div>
+          <div class="key-guide__item">
+            <dt><kbd>L</kbd></dt>
+            <dd>Toggle train headlight</dd>
+          </div>
+        </dl>
+      </details>
+    </div>
     <section class="viewport-panel">
       <div id="scene-container" class="scene-container" aria-label="3D train station scene"></div>
     </section>
