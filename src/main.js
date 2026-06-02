@@ -13,7 +13,7 @@ app.innerHTML = `
         </button>
         <button id="view-toggle" class="mode-toggle view-toggle" type="button" data-mode="free" aria-pressed="false">
           <span class="mode-toggle__option" data-view-option="free">Free cam</span>
-          <span class="mode-toggle__option" data-view-option="follow">Follow train</span>
+          <span class="mode-toggle__option" data-view-option="orbit">Station orbit</span>
         </button>
       </div>
       <p class="eyebrow">Three.js train station</p>
@@ -44,12 +44,12 @@ function updateEnvironmentToggle(mode) {
 }
 
 function updateViewToggle(mode) {
-  const isFollowMode = mode === 'follow'
+  const isOrbitMode = mode === 'orbit'
   viewToggle.dataset.mode = mode
-  viewToggle.setAttribute('aria-pressed', String(isFollowMode))
+  viewToggle.setAttribute('aria-pressed', String(isOrbitMode))
   viewToggle.setAttribute(
     'aria-label',
-    isFollowMode ? 'Camera is following the train. Switch to free cam.' : 'Camera is in free cam. Switch to follow train.',
+    isOrbitMode ? 'Camera is orbiting the station. Switch to free cam.' : 'Camera is in free cam. Switch to station orbit.',
   )
 }
 

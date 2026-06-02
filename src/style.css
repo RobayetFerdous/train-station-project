@@ -109,7 +109,7 @@ select {
   transition: transform 180ms ease;
 }
 
-.view-toggle[data-mode='follow']::before,
+.view-toggle[data-mode='orbit']::before,
 .environment-toggle[data-mode='night']::before {
   transform: translateX(100%);
 }
@@ -127,7 +127,7 @@ select {
 }
 
 .view-toggle[data-mode='free'] [data-view-option='free'],
-.view-toggle[data-mode='follow'] [data-view-option='follow'],
+.view-toggle[data-mode='orbit'] [data-view-option='orbit'],
 .environment-toggle[data-mode='day'] [data-environment-option='day'],
 .environment-toggle[data-mode='night'] [data-environment-option='night'] {
   color: #17202a;

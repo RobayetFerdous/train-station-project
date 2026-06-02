@@ -31,7 +31,7 @@ import {
 
 const CAMERA_MODE = {
 	FREE: 'free',
-	FOLLOW: 'follow',
+	ORBIT: 'orbit',
 }
 
 const ENVIRONMENT_MODE = {
@@ -240,11 +240,6 @@ export function createTrainStationScene(container) {
 		current: CAMERA_MODE.FREE,
 	}
 
-	const followCamera = {
-		position: new Vector3(),
-		target: new Vector3(),
-	}
-
 	const cinematicCamera = {
 		station: null,
 		angle: 0,
@@ -295,73 +290,22 @@ export function createTrainStationScene(container) {
 		trainMotion.train.position.z = 0
 	}
 
-	function getTrainRailPoint(xOffset, yOffset, zOffset, target) {
-		if (!trainMotion.train) {
-			return null
-		}
-
-		target.set(
-			trainMotion.train.position.x + xOffset,
-			trainMotion.train.position.y + yOffset,
-			trainMotion.train.position.z + zOffset,
-		)
-
-		if (trainMotion.train.parent) {
-			trainMotion.train.parent.localToWorld(target)
-		} else {
-			trainMotion.train.localToWorld(target)
-		}
-
-		return target
-	}
-
-	function syncFollowCamera({ immediate = false, deltaTime = 0 } = {}) {
-		if (!trainMotion.train) {
-			return
-		}
-
-		getTrainRailPoint(-15, 7.2, 6.8, followCamera.position)
-		getTrainRailPoint(10, 2.8, 0, followCamera.target)
-
-		if (immediate) {
-			camera.position.copy(followCamera.position)
-			controls.target.copy(followCamera.target)
-		} else {
-			const positionAlpha = Math.min(1, deltaTime * 3.4)
-			const targetAlpha = Math.min(1, deltaTime * 4.6)
-			camera.position.lerp(followCamera.position, positionAlpha)
-			controls.target.lerp(followCamera.target, targetAlpha)
-		}
-
-		camera.lookAt(controls.target)
-		controls.update()
-	}
-
 	function setCameraMode(mode) {
-		const nextMode = mode === CAMERA_MODE.FOLLOW ? CAMERA_MODE.FOLLOW : CAMERA_MODE.FREE
+		const nextMode = mode === CAMERA_MODE.ORBIT ? CAMERA_MODE.ORBIT : CAMERA_MODE.FREE
 		cameraMode.current = nextMode
 		controls.enabled = nextMode === CAMERA_MODE.FREE
 
-		if (nextMode === CAMERA_MODE.FOLLOW) {
+		if (nextMode === CAMERA_MODE.ORBIT) {
 			cinematicCamera.mouseControlling = false
 			cinematicCamera.keyboardControlling = false
 			cinematicCamera.isUserControlling = false
-			syncFollowCamera({ immediate: true })
 		}
 
 		return cameraMode.current
 	}
 
 	function toggleCameraMode() {
-		return setCameraMode(cameraMode.current === CAMERA_MODE.FREE ? CAMERA_MODE.FOLLOW : CAMERA_MODE.FREE)
-	}
-
-	function updateFollowCamera(deltaTime) {
-		if (cameraMode.current !== CAMERA_MODE.FOLLOW) {
-			return
-		}
-
-		syncFollowCamera({ deltaTime })
+		return setCameraMode(cameraMode.current === CAMERA_MODE.FREE ? CAMERA_MODE.ORBIT : CAMERA_MODE.FREE)
 	}
 
 	function moveCameraForward(distance) {
@@ -538,14 +482,14 @@ export function createTrainStationScene(container) {
 	}
 
 	function updateCinematicCamera(deltaTime) {
-		if (!cinematicCamera.station || !trainMotion.train || cinematicCamera.isUserControlling) {
+		if (cameraMode.current !== CAMERA_MODE.ORBIT || !cinematicCamera.station) {
 			return
 		}
 
 		cinematicCamera.angle += deltaTime * 0.22
 
 		cinematicCamera.station.getWorldPosition(cinematicCamera.stationCenter)
-		trainMotion.train.getWorldPosition(cinematicCamera.trainLookTarget)
+		cinematicCamera.trainLookTarget.copy(cinematicCamera.stationCenter).add(cinematicCamera.lookOffset)
 
 		cinematicCamera.cameraPosition.set(
 			cinematicCamera.stationCenter.x + Math.cos(cinematicCamera.angle) * cinematicCamera.radius,
@@ -656,9 +600,6 @@ export function createTrainStationScene(container) {
 		assetGroup.add(station)
 		cinematicCamera.station = station
 
-		if (cameraMode.current === CAMERA_MODE.FOLLOW) {
-			syncFollowCamera({ immediate: true })
-		}
 	})
 
 	function resize() {
@@ -680,7 +621,7 @@ export function createTrainStationScene(container) {
 		const deltaTime = clock.getDelta()
 		updateKeyboardCamera(deltaTime)
 		updateTrainMotion(deltaTime)
-		updateFollowCamera(deltaTime)
+		updateCinematicCamera(deltaTime)
 
 		if (cameraMode.current === CAMERA_MODE.FREE) {
 			controls.update()
