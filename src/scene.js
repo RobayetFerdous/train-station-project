@@ -2,6 +2,7 @@ import {
 	AmbientLight,
 	BoxGeometry,
 	Box3,
+	CanvasTexture,
 	Color,
 	CylinderGeometry,
 	DirectionalLight,
@@ -11,11 +12,13 @@ import {
 	Mesh,
 	Clock,
 	PerspectiveCamera,
+	PointLight,
 	SpotLight,
 	PlaneGeometry,
 	Scene,
 	MeshStandardMaterial,
 	PCFSoftShadowMap,
+	RepeatWrapping,
 	SRGBColorSpace,
 	Vector3,
 	WebGLRenderer,
@@ -24,7 +27,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import {
 	fitModelToLength,
 	groundAndCenterModel,
-	loadTrainAndStationModels,
+	loadTrainStationEnvironmentModels,
 	placeModelOnSurface,
 	orientTrainAlongTracks,
 } from './modelLoader.js'
@@ -68,6 +71,31 @@ const ENVIRONMENT_PRESETS = {
 	},
 }
 
+const STREET_LIGHT_HEIGHT = 7.2
+const STREET_LIGHT_TRACK_PLACEMENTS = [
+	{ along: -78, side: -1, offset: 6.6, rotation: 0.08 },
+	{ along: -54, side: -1, offset: 6.4, rotation: -0.05 },
+	{ along: -30, side: -1, offset: 6.5, rotation: 0.04 },
+	{ along: -6, side: -1, offset: 6.35, rotation: -0.03 },
+	{ along: 18, side: -1, offset: 6.45, rotation: 0.06 },
+	{ along: 42, side: -1, offset: 6.35, rotation: -0.04 },
+	{ along: 66, side: -1, offset: 6.55, rotation: 0.02 },
+]
+const STREET_LIGHT_STATION_PLACEMENTS = [
+	{ localX: -9.8, localZ: 5.15, rotation: Math.PI },
+	{ localX: -3.4, localZ: 5.2, rotation: Math.PI + 0.04 },
+	{ localX: 3.4, localZ: 5.2, rotation: Math.PI - 0.04 },
+	{ localX: 9.8, localZ: 5.15, rotation: Math.PI },
+]
+const STREET_LIGHTING_PRESETS = {
+	[ENVIRONMENT_MODE.DAY]: {
+		pointIntensity: 0,
+	},
+	[ENVIRONMENT_MODE.NIGHT]: {
+		pointIntensity: 2.4,
+	},
+}
+
 function getEnvironmentPreset(mode) {
 	return ENVIRONMENT_PRESETS[mode] ?? ENVIRONMENT_PRESETS[ENVIRONMENT_MODE.DAY]
 }
@@ -82,10 +110,52 @@ function createSky(scene, mode = ENVIRONMENT_MODE.DAY) {
 	applySceneAtmosphere(scene, mode)
 }
 
+function createGroundTexture() {
+	const canvas = document.createElement('canvas')
+	canvas.width = 1024
+	canvas.height = 1024
+
+	const context = canvas.getContext('2d')
+	context.fillStyle = '#7f846b'
+	context.fillRect(0, 0, canvas.width, canvas.height)
+
+	for (let row = 0; row < 64; row += 1) {
+		for (let column = 0; column < 64; column += 1) {
+			const shade = 92 + ((row * 11 + column * 17) % 50)
+			const warmth = 74 + ((row * 19 + column * 7) % 38)
+			context.fillStyle = `rgba(${shade}, ${warmth + 35}, ${warmth}, 0.18)`
+			context.fillRect(column * 16, row * 16, 16, 16)
+		}
+	}
+
+	for (let blade = 0; blade < 900; blade += 1) {
+		const x = (blade * 47) % canvas.width
+		const y = (blade * 89) % canvas.height
+		const length = 3 + (blade % 7)
+		context.strokeStyle = blade % 4 === 0 ? 'rgba(53, 86, 46, 0.26)' : 'rgba(127, 139, 91, 0.28)'
+		context.beginPath()
+		context.moveTo(x, y)
+		context.lineTo(x + ((blade % 5) - 2), y - length)
+		context.stroke()
+	}
+
+	const texture = new CanvasTexture(canvas)
+	texture.colorSpace = SRGBColorSpace
+	texture.wrapS = texture.wrapT = RepeatWrapping
+	texture.repeat.set(18, 18)
+	return texture
+}
+
 function createGround(scene) {
 	const ground = new Mesh(
-		new PlaneGeometry(220, 220),
-		new MeshStandardMaterial({ color: 0x7f766b, roughness: 1, metalness: 0, side: DoubleSide }),
+		new PlaneGeometry(260, 260),
+		new MeshStandardMaterial({
+			color: 0x8b9073,
+			map: createGroundTexture(),
+			roughness: 1,
+			metalness: 0,
+			side: DoubleSide,
+		}),
 	)
 	ground.rotation.x = -Math.PI / 2
 	ground.position.y = -0.01
@@ -142,6 +212,525 @@ function createRailwayTracks(scene) {
 	return tracks
 }
 
+const RAIL_CLEARANCE = {
+	halfLength: 96,
+	halfWidth: 4.8,
+}
+
+const STATION_CLEARANCE_MARGIN = 2.6
+
+const TRACK_LAYER_LIMITS = {
+	stones: [5.25, 7.1],
+	grassBushes: [7.4, 14],
+	smallTrees: [15.5, 27],
+	bigTrees: [32, 48],
+}
+
+const TRACK_LAYER_ALONG_RANGE = [-92, 92]
+
+const GRASS_BLADE_GEOMETRY = new BoxGeometry(0.055, 1, 0.035)
+const GRASS_MATERIALS = [
+	new MeshStandardMaterial({ color: 0x426f35, roughness: 1, metalness: 0 }),
+	new MeshStandardMaterial({ color: 0x5f853f, roughness: 1, metalness: 0 }),
+	new MeshStandardMaterial({ color: 0x8d9a55, roughness: 1, metalness: 0 }),
+]
+
+const TREE_GROUND_SINK_RATIO = 0.07
+const BILLBOARD_TREE_GROUND_SINK_RATIO = 0.22
+
+function fitModelToHeight(model, targetHeight) {
+	const bounds = new Box3().setFromObject(model)
+	const size = new Vector3()
+	bounds.getSize(size)
+
+	if (size.y > 0) {
+		model.scale.multiplyScalar(targetHeight / size.y)
+	}
+
+	return model
+}
+
+function stableRandom(seed) {
+	const value = Math.sin(seed * 12.9898) * 43758.5453
+	return value - Math.floor(value)
+}
+
+function rangeValue([min, max], t) {
+	return min + (max - min) * t
+}
+
+function createLayerPlacements({
+	countPerSide,
+	offsetRange,
+	alongRange = TRACK_LAYER_ALONG_RANGE,
+	heightRange = [1, 1],
+	lengthRange = [1, 1],
+	seedBase,
+}) {
+	const placements = []
+
+	for (const side of [-1, 1]) {
+		for (let index = 0; index < countPerSide; index += 1) {
+			const seed = seedBase + (side > 0 ? 1000 : 0) + index
+			const laneJitter = (stableRandom(seed + 0.3) - 0.5) * ((alongRange[1] - alongRange[0]) / countPerSide) * 0.7
+			const alongProgress = countPerSide === 1 ? 0.5 : index / (countPerSide - 1)
+
+			placements.push({
+				along: rangeValue(alongRange, alongProgress) + laneJitter,
+				side,
+				offset: rangeValue(offsetRange, stableRandom(seed + 1.1)),
+				height: rangeValue(heightRange, stableRandom(seed + 2.2)),
+				length: rangeValue(lengthRange, stableRandom(seed + 3.3)),
+				rotation: stableRandom(seed + 4.4) * Math.PI * 2,
+				seed,
+			})
+		}
+	}
+
+	return placements
+}
+
+function createRailwayLayerPlacements() {
+	return {
+		firstLayerStones: createLayerPlacements({
+			countPerSide: 34,
+			offsetRange: TRACK_LAYER_LIMITS.stones,
+			lengthRange: [0.55, 1.35],
+			seedBase: 10,
+		}),
+		firstLayerGrass: createLayerPlacements({
+			countPerSide: 22,
+			offsetRange: [5.65, 7],
+			heightRange: [0.45, 0.9],
+			seedBase: 80,
+		}),
+		middleGrass: createLayerPlacements({
+			countPerSide: 38,
+			offsetRange: TRACK_LAYER_LIMITS.grassBushes,
+			heightRange: [0.65, 1.25],
+			seedBase: 140,
+		}),
+		treeLayerGrass: createLayerPlacements({
+			countPerSide: 38,
+			offsetRange: TRACK_LAYER_LIMITS.smallTrees,
+			heightRange: [0.65, 1.25],
+			seedBase: 220,
+		}),
+		bushes: createLayerPlacements({
+			countPerSide: 12,
+			offsetRange: [8.5, 13.6],
+			heightRange: [1.4, 3],
+			seedBase: 300,
+		}),
+		smallMediumTrees: createLayerPlacements({
+			countPerSide: 9,
+			offsetRange: TRACK_LAYER_LIMITS.smallTrees,
+			heightRange: [5.5, 10.5],
+			seedBase: 420,
+		}),
+		bigTrees: createLayerPlacements({
+			countPerSide: 8,
+			offsetRange: TRACK_LAYER_LIMITS.bigTrees,
+			heightRange: [13, 22],
+			seedBase: 540,
+		}),
+	}
+}
+
+function getBoundsFootprintCorners(bounds) {
+	return [
+		new Vector3(bounds.min.x, 0, bounds.min.z),
+		new Vector3(bounds.min.x, 0, bounds.max.z),
+		new Vector3(bounds.max.x, 0, bounds.min.z),
+		new Vector3(bounds.max.x, 0, bounds.max.z),
+	]
+}
+
+function isClearOfRailFootprint(bounds, tracks) {
+	const railLocalBounds = new Box3()
+
+	getBoundsFootprintCorners(bounds).forEach((corner) => {
+		tracks.worldToLocal(corner)
+		railLocalBounds.expandByPoint(corner)
+	})
+
+	return (
+		railLocalBounds.max.x < -RAIL_CLEARANCE.halfLength ||
+		railLocalBounds.min.x > RAIL_CLEARANCE.halfLength ||
+		railLocalBounds.max.z < -RAIL_CLEARANCE.halfWidth ||
+		railLocalBounds.min.z > RAIL_CLEARANCE.halfWidth
+	)
+}
+
+function isClearOfStationFootprint(bounds, stationBounds) {
+	if (!stationBounds) {
+		return true
+	}
+
+	return (
+		bounds.max.x < stationBounds.min.x - STATION_CLEARANCE_MARGIN ||
+		bounds.min.x > stationBounds.max.x + STATION_CLEARANCE_MARGIN ||
+		bounds.max.z < stationBounds.min.z - STATION_CLEARANCE_MARGIN ||
+		bounds.min.z > stationBounds.max.z + STATION_CLEARANCE_MARGIN
+	)
+}
+
+function isSafeTracksideObject(object, tracks, stationBounds) {
+	const bounds = new Box3().setFromObject(object)
+	return isClearOfRailFootprint(bounds, tracks) && isClearOfStationFootprint(bounds, stationBounds)
+}
+
+function getTracksidePosition(tracks, placement) {
+	const position = new Vector3(placement.along, 0, placement.side * placement.offset)
+	return tracks.localToWorld(position)
+}
+
+function collectForestSources(forestTreePack, pattern) {
+	const sources = []
+
+	forestTreePack.traverse((object) => {
+		if (object.children.length > 0 && pattern.test(object.name)) {
+			sources.push(object)
+		}
+	})
+
+	return sources
+}
+
+function getTreePartSuffix(name) {
+	const suffixMatch = name.match(/\.\d+$/)
+	return suffixMatch ? suffixMatch[0] : ''
+}
+
+function createTreePartPairs(forestTreePack) {
+	const branchSources = collectForestSources(forestTreePack, /^Tree_Branches_(?:01|02)(?:\.\d+)?$/)
+	const trunkSources = collectForestSources(forestTreePack, /^Tree_Trunk_(?:01|02)(?:\.\d+)?$/)
+
+	return branchSources.map((branchSource, index) => {
+		const branchType = branchSource.name.includes('02') ? '02' : '01'
+		const suffix = getTreePartSuffix(branchSource.name)
+		const trunkSource =
+			trunkSources.find((source) => source.name === `Tree_Trunk_${branchType}${suffix}`) ??
+			trunkSources[index % Math.max(trunkSources.length, 1)]
+
+		return trunkSource ? [trunkSource, branchSource] : [branchSource]
+	})
+}
+
+function createForestAssetLibrary(forestTreePack) {
+	forestTreePack.updateWorldMatrix(true, true)
+
+	const backgroundTreeSources = collectForestSources(forestTreePack, /^Background_Tree_Atlas(?:\.\d+)?$/)
+	const rockSources = collectForestSources(forestTreePack, /^Rocks(?:\.\d+)?$/)
+	const branchSources = collectForestSources(forestTreePack, /^Tree_Branches_(?:01|02)(?:\.\d+)?$/)
+	const realTreeSources = createTreePartPairs(forestTreePack)
+	const billboardTreeSources = backgroundTreeSources.map((source) => [source])
+	const trees = realTreeSources.length > 0 ? realTreeSources : billboardTreeSources
+
+	return {
+		trees: trees.length > 0 ? trees : [[forestTreePack]],
+		backgroundTrees: billboardTreeSources.length > 0 ? billboardTreeSources : trees,
+		shrubs: branchSources.length > 0 ? branchSources.map((source) => [source]) : trees,
+		rocks: rockSources.length > 0 ? rockSources.map((source) => [source]) : trees,
+		treeGroundSinkRatio: realTreeSources.length > 0 ? TREE_GROUND_SINK_RATIO : BILLBOARD_TREE_GROUND_SINK_RATIO,
+	}
+}
+
+function cloneForestSource(source) {
+	source.updateWorldMatrix(true, false)
+
+	const clone = source.clone(true)
+	clone.matrix.copy(source.matrixWorld)
+	clone.matrix.decompose(clone.position, clone.quaternion, clone.scale)
+	clone.matrixAutoUpdate = true
+
+	return clone
+}
+
+function createPlacedForestAsset({ sources, placement, tracks, name, fitMode = 'height', groundSinkRatio = 0 }) {
+	const asset = new Group()
+	asset.name = name
+
+	sources.forEach((source) => {
+		asset.add(cloneForestSource(source))
+	})
+
+	if (fitMode === 'length') {
+		fitModelToLength(asset, placement.length)
+	} else {
+		fitModelToHeight(asset, placement.height)
+	}
+
+	groundAndCenterModel(asset)
+	placeModelOnSurface(asset, 0)
+	asset.position.y -= (placement.height ?? placement.length ?? 1) * groundSinkRatio
+	asset.rotation.y += placement.rotation ?? 0
+
+	const tracksidePosition = getTracksidePosition(tracks, placement)
+	asset.position.x += tracksidePosition.x
+	asset.position.z += tracksidePosition.z
+	asset.updateWorldMatrix(true, true)
+
+	return asset
+}
+
+function createGrassClump({ placement, tracks, name }) {
+	const grassClump = new Group()
+	grassClump.name = name
+
+	const bladeCount = 3 + Math.floor(stableRandom(placement.seed + 5.5) * 4)
+
+	for (let index = 0; index < bladeCount; index += 1) {
+		const bladeSeed = placement.seed + index * 7
+		const bladeHeight = placement.height * (0.65 + stableRandom(bladeSeed + 0.2) * 0.55)
+		const blade = new Mesh(
+			GRASS_BLADE_GEOMETRY,
+			GRASS_MATERIALS[index % GRASS_MATERIALS.length],
+		)
+
+		blade.scale.setScalar(0.85 + stableRandom(bladeSeed + 0.4) * 0.5)
+		blade.scale.y = bladeHeight
+		blade.position.set(
+			(stableRandom(bladeSeed + 0.8) - 0.5) * 0.45,
+			bladeHeight * 0.5,
+			(stableRandom(bladeSeed + 1.2) - 0.5) * 0.45,
+		)
+		blade.rotation.y = stableRandom(bladeSeed + 1.8) * Math.PI
+		blade.rotation.z = (stableRandom(bladeSeed + 2.4) - 0.5) * 0.35
+		blade.castShadow = true
+		blade.receiveShadow = true
+		grassClump.add(blade)
+	}
+
+	const tracksidePosition = getTracksidePosition(tracks, placement)
+	grassClump.position.set(tracksidePosition.x, 0, tracksidePosition.z)
+	grassClump.rotation.y = placement.rotation ?? 0
+	grassClump.updateWorldMatrix(true, true)
+
+	return grassClump
+}
+
+function addPlacedForestAssets({ group, librarySources, placements, tracks, stationBounds, namePrefix, fitMode, groundSinkRatio = 0 }) {
+	placements.forEach((placement, index) => {
+		const asset = createPlacedForestAsset({
+			sources: librarySources[index % librarySources.length],
+			placement,
+			tracks,
+			name: `${namePrefix}_${index + 1}`,
+			fitMode,
+			groundSinkRatio,
+		})
+
+		if (isSafeTracksideObject(asset, tracks, stationBounds)) {
+			group.add(asset)
+		}
+	})
+}
+
+function addGrassClumps({ group, placements, tracks, stationBounds, namePrefix }) {
+	placements.forEach((placement, index) => {
+		const grassClump = createGrassClump({
+			placement,
+			tracks,
+			name: `${namePrefix}_${index + 1}`,
+		})
+
+		if (isSafeTracksideObject(grassClump, tracks, stationBounds)) {
+			group.add(grassClump)
+		}
+	})
+}
+
+function createForestEnvironment(forestTreePack, tracks, station) {
+	const forestEnvironment = new Group()
+	forestEnvironment.name = 'ForestEnvironment'
+
+	tracks.updateWorldMatrix(true, false)
+	station.updateWorldMatrix(true, true)
+
+	const stationBounds = new Box3().setFromObject(station)
+	const forestAssets = createForestAssetLibrary(forestTreePack)
+	const railwayLayerPlacements = createRailwayLayerPlacements()
+
+	addPlacedForestAssets({
+		group: forestEnvironment,
+		librarySources: forestAssets.rocks,
+		placements: railwayLayerPlacements.firstLayerStones,
+		tracks,
+		stationBounds,
+		namePrefix: 'FirstLayerStone',
+		fitMode: 'length',
+	})
+
+	addGrassClumps({
+		group: forestEnvironment,
+		placements: railwayLayerPlacements.firstLayerGrass,
+		tracks,
+		stationBounds,
+		namePrefix: 'FirstLayerGrass',
+	})
+
+	addGrassClumps({
+		group: forestEnvironment,
+		placements: railwayLayerPlacements.middleGrass,
+		tracks,
+		stationBounds,
+		namePrefix: 'MiddleLayerGrass',
+	})
+
+	addPlacedForestAssets({
+		group: forestEnvironment,
+		librarySources: forestAssets.shrubs,
+		placements: railwayLayerPlacements.bushes,
+		tracks,
+		stationBounds,
+		namePrefix: 'MiddleLayerBush',
+		fitMode: 'height',
+	})
+
+	addGrassClumps({
+		group: forestEnvironment,
+		placements: railwayLayerPlacements.treeLayerGrass,
+		tracks,
+		stationBounds,
+		namePrefix: 'TreeLayerGrass',
+	})
+
+	addPlacedForestAssets({
+		group: forestEnvironment,
+		librarySources: forestAssets.trees,
+		placements: railwayLayerPlacements.smallMediumTrees,
+		tracks,
+		stationBounds,
+		namePrefix: 'SmallMediumTree',
+		fitMode: 'height',
+		groundSinkRatio: forestAssets.treeGroundSinkRatio,
+	})
+
+	addPlacedForestAssets({
+		group: forestEnvironment,
+		librarySources: forestAssets.trees,
+		placements: railwayLayerPlacements.bigTrees,
+		tracks,
+		stationBounds,
+		namePrefix: 'BigTracksideTree',
+		fitMode: 'height',
+		groundSinkRatio: forestAssets.treeGroundSinkRatio,
+	})
+
+	return forestEnvironment
+}
+
+function getStreetLightLightingPreset(mode) {
+	return STREET_LIGHTING_PRESETS[mode] ?? STREET_LIGHTING_PRESETS[ENVIRONMENT_MODE.DAY]
+}
+
+function createStreetLightGlow(name, mode) {
+	const lighting = getStreetLightLightingPreset(mode)
+	const glowPositionY = STREET_LIGHT_HEIGHT * 0.88
+	const pointLight = new PointLight(0xffd899, lighting.pointIntensity, 15, 1.7)
+	pointLight.name = `${name}_Glow`
+	pointLight.position.set(0, glowPositionY, 0)
+	pointLight.visible = lighting.pointIntensity > 0
+	pointLight.castShadow = false
+
+	return { pointLight }
+}
+
+function createStreetLightInstance(streetLightLamp, name, mode) {
+	const lamp = streetLightLamp.clone(true)
+	lamp.name = name
+
+	fitModelToHeight(lamp, STREET_LIGHT_HEIGHT)
+	groundAndCenterModel(lamp)
+	placeModelOnSurface(lamp, 0)
+
+	const { pointLight } = createStreetLightGlow(name, mode)
+	lamp.add(pointLight)
+	lamp.userData.streetLightLighting = {
+		pointLight,
+	}
+
+	return lamp
+}
+
+function isClearOfTracks(object, tracks) {
+	const bounds = new Box3().setFromObject(object)
+	return isClearOfRailFootprint(bounds, tracks)
+}
+
+function addTracksideStreetLights({ group, streetLightLamp, tracks, mode }) {
+	STREET_LIGHT_TRACK_PLACEMENTS.forEach((placement, index) => {
+		const lamp = createStreetLightInstance(streetLightLamp, `TracksideStreetLight_${index + 1}`, mode)
+		const tracksidePosition = getTracksidePosition(tracks, placement)
+
+		lamp.position.x += tracksidePosition.x
+		lamp.position.z += tracksidePosition.z
+		lamp.rotation.y = tracks.rotation.y + (placement.side > 0 ? Math.PI : 0) + (placement.rotation ?? 0)
+		lamp.updateWorldMatrix(true, true)
+
+		if (isClearOfTracks(lamp, tracks)) {
+			group.add(lamp)
+		}
+	})
+}
+
+function addStationAreaStreetLights({ group, streetLightLamp, station, tracks, mode }) {
+	STREET_LIGHT_STATION_PLACEMENTS.forEach((placement, index) => {
+		const lamp = createStreetLightInstance(streetLightLamp, `StationStreetLight_${index + 1}`, mode)
+		const stationPosition = new Vector3(placement.localX, 0, placement.localZ)
+			.applyAxisAngle(new Vector3(0, 1, 0), station.rotation.y)
+			.add(station.position)
+
+		lamp.position.x += stationPosition.x
+		lamp.position.z += stationPosition.z
+		lamp.rotation.y = station.rotation.y + (placement.rotation ?? 0)
+		lamp.updateWorldMatrix(true, true)
+
+		if (isClearOfTracks(lamp, tracks)) {
+			group.add(lamp)
+		}
+	})
+}
+
+function createStreetLightEnvironment(streetLightLamp, tracks, station, mode) {
+	const streetLightEnvironment = new Group()
+	streetLightEnvironment.name = 'StreetLightEnvironment'
+
+	tracks.updateWorldMatrix(true, false)
+	station.updateWorldMatrix(true, true)
+
+	addTracksideStreetLights({
+		group: streetLightEnvironment,
+		streetLightLamp,
+		tracks,
+		mode,
+	})
+	addStationAreaStreetLights({
+		group: streetLightEnvironment,
+		streetLightLamp,
+		station,
+		tracks,
+		mode,
+	})
+
+	return streetLightEnvironment
+}
+
+function setStreetLightLighting(streetLightEnvironment, mode) {
+	const lighting = getStreetLightLightingPreset(mode)
+
+	streetLightEnvironment.traverse((object) => {
+		const streetLightLighting = object.userData.streetLightLighting
+		if (!streetLightLighting) {
+			return
+		}
+
+		streetLightLighting.pointLight.intensity = lighting.pointIntensity
+		streetLightLighting.pointLight.visible = lighting.pointIntensity > 0
+	})
+}
+
 function createRenderer(container) {
 	const renderer = new WebGLRenderer({ antialias: true, alpha: true })
 	renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -190,6 +779,8 @@ export function createTrainStationScene(container) {
 	directionalLight.shadow.camera.bottom = -50
 	scene.add(directionalLight)
 
+	let streetLightEnvironment = null
+
 	function updateTrainHeadlightLighting() {
 		if (!trainMotion.headlight) {
 			return
@@ -208,6 +799,14 @@ export function createTrainStationScene(container) {
 		}
 	}
 
+	function updateStreetLightLighting() {
+		if (!streetLightEnvironment) {
+			return
+		}
+
+		setStreetLightLighting(streetLightEnvironment, environmentMode.current)
+	}
+
 	function setEnvironmentMode(mode) {
 		const nextMode = mode === ENVIRONMENT_MODE.NIGHT ? ENVIRONMENT_MODE.NIGHT : ENVIRONMENT_MODE.DAY
 		const preset = getEnvironmentPreset(nextMode)
@@ -220,6 +819,7 @@ export function createTrainStationScene(container) {
 		directionalLight.intensity = preset.directionalIntensity
 		directionalLight.position.set(...preset.directionalPosition)
 		updateTrainHeadlightLighting()
+		updateStreetLightLighting()
 
 		return environmentMode.current
 	}
@@ -575,7 +1175,7 @@ export function createTrainStationScene(container) {
 	}
 
 	let disposed = false
-	loadTrainAndStationModels().then(({ train, station }) => {
+	loadTrainStationEnvironmentModels().then(({ train, station, forestTreePack, streetLightLamp }) => {
 		if (disposed) {
 			return
 		}
@@ -599,6 +1199,12 @@ export function createTrainStationScene(container) {
 		station.rotation.y = -Math.PI / 3.4
 		assetGroup.add(station)
 		cinematicCamera.station = station
+
+		streetLightEnvironment = createStreetLightEnvironment(streetLightLamp, tracks, station, environmentMode.current)
+		assetGroup.add(streetLightEnvironment)
+		updateStreetLightLighting()
+
+		assetGroup.add(createForestEnvironment(forestTreePack, tracks, station))
 
 	})
 

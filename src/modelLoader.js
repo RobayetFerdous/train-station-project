@@ -98,6 +98,22 @@ async function loadGLB(url) {
   return prepareLoadedModel(root)
 }
 
+export async function loadTrainStationEnvironmentModels() {
+  const [train, station, forestTreePack, streetLightLamp] = await Promise.all([
+    loadGLB('/models/train.glb'),
+    loadGLB('/models/station.glb'),
+    loadGLB('/models/forest_tree_pack.glb'),
+    loadGLB('/models/street_light_lamp.glb'),
+  ])
+
+  train.name = 'TrainModel'
+  station.name = 'StationModel'
+  forestTreePack.name = 'ForestTreePackModel'
+  streetLightLamp.name = 'StreetLightLampModel'
+
+  return { train, station, forestTreePack, streetLightLamp }
+}
+
 export async function loadTrainAndStationModels() {
   const [train, station] = await Promise.all([
     loadGLB('/models/train.glb'),
