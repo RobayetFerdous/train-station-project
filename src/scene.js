@@ -106,6 +106,52 @@ const STREET_LIGHT_HEADS = [
 	},
 ]
 
+const MAP_SIZE = 260
+const MAP_HALF_SIZE = MAP_SIZE / 2
+const TRACK_POSITION_X = -18
+const TRACK_POSITION_Z = -8
+const TRACK_ROTATION_Y = -0.32
+const TRACK_EDGE_BUFFER = 4
+const SLEEPER_SPACING = 2.05
+const TRACK_DIRECTION_X = Math.cos(TRACK_ROTATION_Y)
+const TRACK_DIRECTION_Z = -Math.sin(TRACK_ROTATION_Y)
+const TRACK_MAP_ALONG_RANGE = getTrackMapAlongRange()
+const TRACK_LENGTH = TRACK_MAP_ALONG_RANGE[1] - TRACK_MAP_ALONG_RANGE[0]
+const TRACK_CENTER_ALONG = (TRACK_MAP_ALONG_RANGE[0] + TRACK_MAP_ALONG_RANGE[1]) / 2
+const FIRST_SLEEPER_INDEX = Math.ceil(TRACK_MAP_ALONG_RANGE[0] / SLEEPER_SPACING)
+const LAST_SLEEPER_INDEX = Math.floor(TRACK_MAP_ALONG_RANGE[1] / SLEEPER_SPACING)
+
+function getTrackMapAlongRange() {
+	const candidates = []
+	const edgeTolerance = 0.001
+
+	function addBoundaryCandidate(along) {
+		const x = TRACK_POSITION_X + along * TRACK_DIRECTION_X
+		const z = TRACK_POSITION_Z + along * TRACK_DIRECTION_Z
+
+		if (
+			x >= -MAP_HALF_SIZE - edgeTolerance &&
+			x <= MAP_HALF_SIZE + edgeTolerance &&
+			z >= -MAP_HALF_SIZE - edgeTolerance &&
+			z <= MAP_HALF_SIZE + edgeTolerance
+		) {
+			candidates.push(along)
+		}
+	}
+
+	for (const boundary of [-MAP_HALF_SIZE, MAP_HALF_SIZE]) {
+		if (Math.abs(TRACK_DIRECTION_X) > edgeTolerance) {
+			addBoundaryCandidate((boundary - TRACK_POSITION_X) / TRACK_DIRECTION_X)
+		}
+
+		if (Math.abs(TRACK_DIRECTION_Z) > edgeTolerance) {
+			addBoundaryCandidate((boundary - TRACK_POSITION_Z) / TRACK_DIRECTION_Z)
+		}
+	}
+
+	return [Math.min(...candidates), Math.max(...candidates)]
+}
+
 function getEnvironmentPreset(mode) {
 	return ENVIRONMENT_PRESETS[mode] ?? ENVIRONMENT_PRESETS[ENVIRONMENT_MODE.DAY]
 }
@@ -158,7 +204,7 @@ function createGroundTexture() {
 
 function createGround(scene) {
 	const ground = new Mesh(
-		new PlaneGeometry(260, 260),
+		new PlaneGeometry(MAP_SIZE, MAP_SIZE),
 		new MeshStandardMaterial({
 			color: 0x8b9073,
 			map: createGroundTexture(),
@@ -178,10 +224,10 @@ function createRailwayTracks(scene) {
 	tracks.name = 'RailwayTracks'
 
 	const ballast = new Mesh(
-		new BoxGeometry(96, 0.28, 6.6),
+		new BoxGeometry(TRACK_LENGTH, 0.28, 6.6),
 		new MeshStandardMaterial({ color: 0x6c6257, roughness: 1, metalness: 0 }),
 	)
-	ballast.position.y = 0.11
+	ballast.position.set(TRACK_CENTER_ALONG, 0.11, 0)
 	ballast.receiveShadow = true
 	tracks.add(ballast)
 
@@ -191,7 +237,7 @@ function createRailwayTracks(scene) {
 		metalness: 0,
 	})
 
-	for (let index = -22; index <= 22; index += 1) {
+	for (let index = FIRST_SLEEPER_INDEX; index <= LAST_SLEEPER_INDEX; index += 1) {
 		const sleeper = new Mesh(
 			new BoxGeometry(2.8, 0.12, 0.22),
 			sleeperMaterial,
@@ -209,21 +255,22 @@ function createRailwayTracks(scene) {
 	})
 
 	for (const z of [-1.25, 1.25]) {
-		const rail = new Mesh(new BoxGeometry(96, 0.08, 0.12), railMaterial)
-		rail.position.set(0, 0.46, z)
+		const rail = new Mesh(new BoxGeometry(TRACK_LENGTH, 0.08, 0.12), railMaterial)
+		rail.position.set(TRACK_CENTER_ALONG, 0.46, z)
 		rail.castShadow = true
 		rail.receiveShadow = true
 		tracks.add(rail)
 	}
 
-	tracks.position.set(-18, 0, -8)
-	tracks.rotation.y = -0.32
+	tracks.position.set(TRACK_POSITION_X, 0, TRACK_POSITION_Z)
+	tracks.rotation.y = TRACK_ROTATION_Y
 	scene.add(tracks)
 	return tracks
 }
 
 const RAIL_CLEARANCE = {
-	halfLength: 96,
+	minX: TRACK_MAP_ALONG_RANGE[0],
+	maxX: TRACK_MAP_ALONG_RANGE[1],
 	halfWidth: 4.8,
 }
 
@@ -236,7 +283,10 @@ const TRACK_LAYER_LIMITS = {
 	bigTrees: [32, 48],
 }
 
-const TRACK_LAYER_ALONG_RANGE = [-92, 92]
+const TRACK_LAYER_ALONG_RANGE = [
+	TRACK_MAP_ALONG_RANGE[0] + TRACK_EDGE_BUFFER,
+	TRACK_MAP_ALONG_RANGE[1] - TRACK_EDGE_BUFFER,
+]
 
 const GRASS_BLADE_GEOMETRY = new BoxGeometry(0.055, 1, 0.035)
 const GRASS_MATERIALS = [
@@ -365,8 +415,8 @@ function isClearOfRailFootprint(bounds, tracks) {
 	})
 
 	return (
-		railLocalBounds.max.x < -RAIL_CLEARANCE.halfLength ||
-		railLocalBounds.min.x > RAIL_CLEARANCE.halfLength ||
+		railLocalBounds.max.x < RAIL_CLEARANCE.minX ||
+		railLocalBounds.min.x > RAIL_CLEARANCE.maxX ||
 		railLocalBounds.max.z < -RAIL_CLEARANCE.halfWidth ||
 		railLocalBounds.min.z > RAIL_CLEARANCE.halfWidth
 	)
@@ -895,9 +945,9 @@ export function createTrainStationScene(container) {
 		headlight: null,
 		state: 'outside',
 		elapsed: 0,
-		outsidePosition: -86,
+		outsidePosition: TRACK_MAP_ALONG_RANGE[0] + TRACK_EDGE_BUFFER,
 		insidePosition: -8,
-		exitPosition: 86,
+		exitPosition: TRACK_MAP_ALONG_RANGE[1] - TRACK_EDGE_BUFFER,
 		currentSpeed: 0,
 		cruiseSpeed: 12,
 		acceleration: 2.35,
