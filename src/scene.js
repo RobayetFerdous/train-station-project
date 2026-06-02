@@ -191,11 +191,11 @@ export function createTrainStationScene(container) {
 		state: 'outside',
 		elapsed: 0,
 		outsidePosition: -78,
-		insidePosition: 8,
+		insidePosition: -8,
 		exitPosition: 78,
-		approachDuration: 9,//9
-		departDuration: 9,//9
-		stopDuration: 0,
+		approachDuration: 9,
+		departDuration: 9,
+		stopDuration: 3,
 	}
 
 	function resetTrainMotion() {
