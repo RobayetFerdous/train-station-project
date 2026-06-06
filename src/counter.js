@@ -1,4 +1,5 @@
 export function setupCounter(element) {
+  // Demo helper from the starter template: updates text every time the element is clicked.
   let counter = 0
   const setCounter = (count) => {
     counter = count

@@ -13,6 +13,7 @@ import {
 } from 'three'
 
 function createMetalTexture() {
+	// Creates a reusable procedural metal texture for the train body.
 	const canvas = document.createElement('canvas')
 	canvas.width = 512
 	canvas.height = 512
@@ -51,6 +52,7 @@ function createMetalTexture() {
 }
 
 function createWheel() {
+	// A wheel is just a short cylinder rotated sideways.
 	const wheel = new Mesh(
 		new CylinderGeometry(0.35, 0.35, 0.22, 8),
 		new MeshStandardMaterial({ color: 0x2a2d31, roughness: 0.4, metalness: 0.85 }),
@@ -60,6 +62,7 @@ function createWheel() {
 }
 
 function createPassengerCar({ length, height, width, bodyColor, accentColor, windowCount, doorOffset, roofHeight }) {
+	// Builds one coach by combining body, roof, windows, doors, wheels, and coupler.
 	const car = new Group()
 	const metalTexture = createMetalTexture()
 
@@ -160,6 +163,7 @@ function createPassengerCar({ length, height, width, bodyColor, accentColor, win
 }
 
 function createEngine() {
+	// Builds the front engine using simple box and cylinder meshes.
 	const engine = new Group()
 	const metalTexture = createMetalTexture()
 
@@ -250,6 +254,7 @@ function createEngine() {
 }
 
 export function createPassengerTrain({ coachCount = 3 } = {}) {
+	// Creates an engine plus repeated passenger coaches.
 	const train = new Group()
 	train.name = 'PassengerTrain'
 
@@ -302,10 +307,7 @@ export function createPassengerTrain({ coachCount = 3 } = {}) {
 		}
 	}
 
-	// --------------------------------------------------
-	// CENTER TRAIN PIVOT AUTOMATICALLY
-	// --------------------------------------------------
-
+	// Recenters all children so rotation and placement happen around the train midpoint.
 	const minX = -3.2 // engine back
 	const maxX = 7.2 + (coachCount - 1) * carriageSpacing + coachLength * 0.5
 

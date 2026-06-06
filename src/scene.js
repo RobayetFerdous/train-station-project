@@ -31,6 +31,7 @@ import {
 	orientTrainAlongTracks,
 } from './modelLoader.js'
 
+// Main scene module: creates the world, places models, and runs animation.
 const CAMERA_MODE = {
 	FREE: 'free',
 	ORBIT: 'orbit',
@@ -41,6 +42,7 @@ const ENVIRONMENT_MODE = {
 	NIGHT: 'night',
 }
 
+// These presets let one toggle update sky, fog, sun, and headlight brightness.
 const ENVIRONMENT_PRESETS = {
 	[ENVIRONMENT_MODE.DAY]: {
 		skyColor: 0xaed8ff,
@@ -71,6 +73,8 @@ const ENVIRONMENT_PRESETS = {
 }
 
 const STREET_LIGHT_HEIGHT = 7.2
+
+// Trackside/station placements are stored as data so lights can be generated in loops.
 const STREET_LIGHT_TRACK_PLACEMENTS = [
 	{ along: -78, side: -1, offset: 6.6, rotation: 0.08 },
 	{ along: -54, side: -1, offset: 6.4, rotation: -0.05 },
@@ -108,6 +112,8 @@ const STREET_LIGHT_HEADS = [
 
 const MAP_SIZE = 260
 const MAP_HALF_SIZE = MAP_SIZE / 2
+
+// Track direction values define one rotated local rail line across the square map.
 const TRACK_POSITION_X = -18
 const TRACK_POSITION_Z = -8
 const TRACK_ROTATION_Y = -0.32
@@ -122,6 +128,7 @@ const FIRST_SLEEPER_INDEX = Math.ceil(TRACK_MAP_ALONG_RANGE[0] / SLEEPER_SPACING
 const LAST_SLEEPER_INDEX = Math.floor(TRACK_MAP_ALONG_RANGE[1] / SLEEPER_SPACING)
 
 function getTrackMapAlongRange() {
+	// Calculates where the rotated track enters and leaves the map boundary.
 	const candidates = []
 	const edgeTolerance = 0.001
 
@@ -157,6 +164,7 @@ function getEnvironmentPreset(mode) {
 }
 
 function applySceneAtmosphere(scene, mode) {
+	// Applies the current environment preset to the scene background and fog.
 	const preset = getEnvironmentPreset(mode)
 	scene.background = new Color(preset.skyColor)
 	scene.fog = new Fog(preset.fogColor, preset.fogNear, preset.fogFar)
@@ -167,6 +175,7 @@ function createSky(scene, mode = ENVIRONMENT_MODE.DAY) {
 }
 
 function createGroundTexture() {
+	// Builds a grass-like texture procedurally instead of loading an image file.
 	const canvas = document.createElement('canvas')
 	canvas.width = 1024
 	canvas.height = 1024
@@ -203,6 +212,7 @@ function createGroundTexture() {
 }
 
 function createGround(scene) {
+	// Adds the large floor plane that receives shadows and repeats the grass texture.
 	const ground = new Mesh(
 		new PlaneGeometry(MAP_SIZE, MAP_SIZE),
 		new MeshStandardMaterial({
@@ -220,6 +230,7 @@ function createGround(scene) {
 }
 
 function createRailwayTracks(scene) {
+	// Builds ballast, wooden sleepers, and two metal rails as one rotated group.
 	const tracks = new Group()
 	tracks.name = 'RailwayTracks'
 
@@ -274,6 +285,7 @@ const RAIL_CLEARANCE = {
 	halfWidth: 4.8,
 }
 
+// Clearance checks prevent generated trees, stones, or lights from blocking trains/station.
 const STATION_CLEARANCE_MARGIN = 2.6
 
 const TRACK_LAYER_LIMITS = {
@@ -299,6 +311,7 @@ const TREE_GROUND_SINK_RATIO = 0.07
 const BILLBOARD_TREE_GROUND_SINK_RATIO = 0.22
 
 function fitModelToHeight(model, targetHeight) {
+	// Uniformly scales any imported asset to a target height.
 	const bounds = new Box3().setFromObject(model)
 	const size = new Vector3()
 	bounds.getSize(size)
@@ -311,6 +324,7 @@ function fitModelToHeight(model, targetHeight) {
 }
 
 function stableRandom(seed) {
+	// Gives repeatable pseudo-random values, so scenery looks random but stays fixed.
 	const value = Math.sin(seed * 12.9898) * 43758.5453
 	return value - Math.floor(value)
 }
@@ -327,6 +341,7 @@ function createLayerPlacements({
 	lengthRange = [1, 1],
 	seedBase,
 }) {
+	// Produces positions on both sides of the track for one scenery layer.
 	const placements = []
 
 	for (const side of [-1, 1]) {
@@ -351,6 +366,7 @@ function createLayerPlacements({
 }
 
 function createRailwayLayerPlacements() {
+	// Separates scenery into distance bands: stones near rail, then grass, then trees.
 	return {
 		firstLayerStones: createLayerPlacements({
 			countPerSide: 34,
@@ -407,6 +423,7 @@ function getBoundsFootprintCorners(bounds) {
 }
 
 function isClearOfRailFootprint(bounds, tracks) {
+	// Converts world bounds into track-local space before checking rail overlap.
 	const railLocalBounds = new Box3()
 
 	getBoundsFootprintCorners(bounds).forEach((corner) => {
@@ -423,6 +440,7 @@ function isClearOfRailFootprint(bounds, tracks) {
 }
 
 function isClearOfStationFootprint(bounds, stationBounds) {
+	// Keeps scenery outside the station footprint plus a small margin.
 	if (!stationBounds) {
 		return true
 	}
@@ -441,6 +459,7 @@ function isSafeTracksideObject(object, tracks, stationBounds) {
 }
 
 function getTracksidePosition(tracks, placement) {
+	// Converts a local track offset into the final world position.
 	const position = new Vector3(placement.along, 0, placement.side * placement.offset)
 	return tracks.localToWorld(position)
 }
@@ -478,6 +497,7 @@ function createTreePartPairs(forestTreePack) {
 }
 
 function createForestAssetLibrary(forestTreePack) {
+	// Picks useful tree, shrub, and rock meshes from the imported forest model pack.
 	forestTreePack.updateWorldMatrix(true, true)
 
 	const backgroundTreeSources = collectForestSources(forestTreePack, /^Background_Tree_Atlas(?:\.\d+)?$/)
@@ -497,6 +517,7 @@ function createForestAssetLibrary(forestTreePack) {
 }
 
 function cloneForestSource(source) {
+	// Clones a source mesh while preserving its world transform from the original GLB.
 	source.updateWorldMatrix(true, false)
 
 	const clone = source.clone(true)
@@ -508,6 +529,7 @@ function cloneForestSource(source) {
 }
 
 function createPlacedForestAsset({ sources, placement, tracks, name, fitMode = 'height', groundSinkRatio = 0 }) {
+	// Builds one placed rock/tree/shrub from source meshes and generated placement data.
 	const asset = new Group()
 	asset.name = name
 
@@ -535,6 +557,7 @@ function createPlacedForestAsset({ sources, placement, tracks, name, fitMode = '
 }
 
 function createGrassClump({ placement, tracks, name }) {
+	// Creates a small grass cluster from several thin box blades.
 	const grassClump = new Group()
 	grassClump.name = name
 
@@ -571,6 +594,7 @@ function createGrassClump({ placement, tracks, name }) {
 }
 
 function addPlacedForestAssets({ group, librarySources, placements, tracks, stationBounds, namePrefix, fitMode, groundSinkRatio = 0 }) {
+	// Adds generated assets only when they pass rail and station clearance checks.
 	placements.forEach((placement, index) => {
 		const asset = createPlacedForestAsset({
 			sources: librarySources[index % librarySources.length],
@@ -588,6 +612,7 @@ function addPlacedForestAssets({ group, librarySources, placements, tracks, stat
 }
 
 function addGrassClumps({ group, placements, tracks, stationBounds, namePrefix }) {
+	// Grass uses custom blade geometry but the same safety check as other scenery.
 	placements.forEach((placement, index) => {
 		const grassClump = createGrassClump({
 			placement,
@@ -602,6 +627,7 @@ function addGrassClumps({ group, placements, tracks, stationBounds, namePrefix }
 }
 
 function createForestEnvironment(forestTreePack, tracks, station) {
+	// Combines all scenery layers into one group that can be added to the scene.
 	const forestEnvironment = new Group()
 	forestEnvironment.name = 'ForestEnvironment'
 
@@ -686,6 +712,7 @@ function getStreetLightLightingPreset(mode) {
 }
 
 function createStreetLightBeam(name, mode, index) {
+	// Each lamp head owns a spotlight beam that becomes visible at night.
 	const lighting = getStreetLightLightingPreset(mode)
 	const head = STREET_LIGHT_HEADS[index]
 	const beam = new SpotLight(
@@ -708,6 +735,7 @@ function createStreetLightBeam(name, mode, index) {
 }
 
 function createStreetLightInstance(streetLightLamp, name, mode) {
+	// Clones the lamp model and attaches two spotlight beams to its heads.
 	const lamp = streetLightLamp.clone(true)
 	lamp.name = name
 
@@ -728,11 +756,13 @@ function createStreetLightInstance(streetLightLamp, name, mode) {
 }
 
 function isClearOfTracks(object, tracks) {
+	// Reuses rail clearance logic so lamps are not placed on the track.
 	const bounds = new Box3().setFromObject(object)
 	return isClearOfRailFootprint(bounds, tracks)
 }
 
 function addTracksideStreetLights({ group, streetLightLamp, tracks, mode }) {
+	// Places a row of lamps along one side of the track.
 	STREET_LIGHT_TRACK_PLACEMENTS.forEach((placement, index) => {
 		const lamp = createStreetLightInstance(streetLightLamp, `TracksideStreetLight_${index + 1}`, mode)
 		const tracksidePosition = getTracksidePosition(tracks, placement)
@@ -749,6 +779,7 @@ function addTracksideStreetLights({ group, streetLightLamp, tracks, mode }) {
 }
 
 function addStationAreaStreetLights({ group, streetLightLamp, station, tracks, mode }) {
+	// Places lamps around the station using station-local coordinates.
 	STREET_LIGHT_STATION_PLACEMENTS.forEach((placement, index) => {
 		const lamp = createStreetLightInstance(streetLightLamp, `StationStreetLight_${index + 1}`, mode)
 		const stationPosition = new Vector3(placement.localX, 0, placement.localZ)
@@ -767,6 +798,7 @@ function addStationAreaStreetLights({ group, streetLightLamp, station, tracks, m
 }
 
 function createStreetLightEnvironment(streetLightLamp, tracks, station, mode) {
+	// Groups all lamps together so their lighting can be updated later.
 	const streetLightEnvironment = new Group()
 	streetLightEnvironment.name = 'StreetLightEnvironment'
 
@@ -791,6 +823,7 @@ function createStreetLightEnvironment(streetLightLamp, tracks, station, mode) {
 }
 
 function setStreetLightLighting(streetLightEnvironment, mode) {
+	// Traverses lamp userData and changes beam intensity for day/night mode.
 	const lighting = getStreetLightLightingPreset(mode)
 
 	streetLightEnvironment.traverse((object) => {
@@ -807,6 +840,7 @@ function setStreetLightLighting(streetLightEnvironment, mode) {
 }
 
 function createRenderer(container) {
+	// Creates the WebGL canvas and enables color management plus soft shadows.
 	const renderer = new WebGLRenderer({ antialias: true, alpha: true })
 	renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 	renderer.setSize(container.clientWidth, container.clientHeight)
@@ -818,6 +852,7 @@ function createRenderer(container) {
 }
 
 export function createTrainStationScene(container) {
+	// Public entry point: sets up the scene and returns controls for the UI.
 	const scene = new Scene()
 	const environmentMode = {
 		current: ENVIRONMENT_MODE.DAY,
@@ -839,6 +874,7 @@ export function createTrainStationScene(container) {
 
 	const renderer = createRenderer(container)
 
+	// Ambient light brightens every object; directional light gives sun-like shadows.
 	const ambientLight = new AmbientLight(0xffffff, 1.8)
 	scene.add(ambientLight)
 
@@ -857,6 +893,7 @@ export function createTrainStationScene(container) {
 	let streetLightEnvironment = null
 
 	function updateTrainHeadlightLighting() {
+		// Keeps the train headlight brightness matched to day or night mode.
 		if (!trainMotion.headlight) {
 			return
 		}
@@ -875,6 +912,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function updateStreetLightLighting() {
+		// Street lights are created after model loading, so guard until they exist.
 		if (!streetLightEnvironment) {
 			return
 		}
@@ -883,6 +921,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function setEnvironmentMode(mode) {
+		// Changes atmosphere and light intensities without recreating objects.
 		const nextMode = mode === ENVIRONMENT_MODE.NIGHT ? ENVIRONMENT_MODE.NIGHT : ENVIRONMENT_MODE.DAY
 		const preset = getEnvironmentPreset(nextMode)
 
@@ -904,6 +943,7 @@ export function createTrainStationScene(container) {
 	}
 
 	const controls = new OrbitControls(camera, renderer.domElement)
+	// Damping makes orbit movement feel smooth instead of stopping instantly.
 	controls.target.set(0, 4, 6)
 	controls.enableDamping = true
 	controls.minDistance = 12
@@ -915,6 +955,7 @@ export function createTrainStationScene(container) {
 		current: CAMERA_MODE.FREE,
 	}
 
+	// Stores temporary vectors and settings for the automatic station orbit camera.
 	const cinematicCamera = {
 		station: null,
 		angle: 0,
@@ -930,6 +971,7 @@ export function createTrainStationScene(container) {
 	}
 
 	const keyboardState = {
+		// These booleans stay true while each key is held down.
 		forward: false,
 		backward: false,
 		left: false,
@@ -940,6 +982,7 @@ export function createTrainStationScene(container) {
 
 	let trainAnimationPaused = false
 
+	// Train motion is a small state machine: entering, stopped, leaving, outside.
 	const trainMotion = {
 		train: null,
 		headlight: null,
@@ -960,6 +1003,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function resetTrainMotion() {
+		// Puts the train back before the station and starts a new arrival cycle.
 		if (!trainMotion.train) {
 			return
 		}
@@ -974,6 +1018,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function moveValueToward(current, target, maxStep) {
+		// Smoothly accelerates or brakes by limiting how much speed changes per frame.
 		if (current < target) {
 			return Math.min(current + maxStep, target)
 		}
@@ -982,6 +1027,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function getArrivalTargetSpeed(remainingDistance) {
+		// Uses braking distance physics so the train slows down before the platform.
 		if (remainingDistance <= trainMotion.stopBuffer) {
 			return 0
 		}
@@ -991,6 +1037,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function applyTrainRideMotion(deltaTime) {
+		// Adds a tiny vertical bounce while moving so the train feels less static.
 		if (!trainMotion.train) {
 			return
 		}
@@ -1004,6 +1051,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function setCameraMode(mode) {
+		// Free mode enables OrbitControls; orbit mode lets code drive the camera.
 		const nextMode = mode === CAMERA_MODE.ORBIT ? CAMERA_MODE.ORBIT : CAMERA_MODE.FREE
 		cameraMode.current = nextMode
 		controls.enabled = nextMode === CAMERA_MODE.FREE
@@ -1022,6 +1070,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function moveCameraForward(distance) {
+		// Moves camera and target together so view direction stays the same.
 		const direction = new Vector3()
 		camera.getWorldDirection(direction)
 		direction.y = 0
@@ -1033,6 +1082,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function moveCameraSideways(distance) {
+		// Uses the camera direction cross product to move left or right.
 		const direction = new Vector3()
 		camera.getWorldDirection(direction)
 		direction.y = 0
@@ -1044,6 +1094,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function tiltCamera(angle) {
+		// Changes the polar angle around the target while respecting control limits.
 		const offset = camera.position.clone().sub(controls.target)
 		const horizontalDistance = Math.hypot(offset.x, offset.z)
 		const minPolarAngle = Math.max(controls.minPolarAngle, 0.1)
@@ -1062,6 +1113,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function updateKeyboardCamera(deltaTime) {
+		// Converts held keyboard keys into frame-rate-independent camera movement.
 		if (cameraMode.current !== CAMERA_MODE.FREE) {
 			cinematicCamera.keyboardControlling = false
 			cinematicCamera.isUserControlling = cinematicCamera.mouseControlling
@@ -1107,6 +1159,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function createTrainHeadlight(train) {
+		// Finds the front light mesh if possible, then adds a real spotlight beam.
 		train.updateWorldMatrix(true, true)
 
 		const railOrigin = new Vector3()
@@ -1195,6 +1248,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function updateCinematicCamera(deltaTime) {
+		// In orbit mode, camera circles the station and always looks toward it.
 		if (cameraMode.current !== CAMERA_MODE.ORBIT || !cinematicCamera.station) {
 			return
 		}
@@ -1217,6 +1271,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function toggleTrainHeadlight() {
+		// Toggles both the visible beam and the lens glow.
 		if (!trainMotion.headlight) {
 			return
 		}
@@ -1239,6 +1294,7 @@ export function createTrainStationScene(container) {
 	}
 
 	function updateTrainMotion(deltaTime) {
+		// Advances the train state machine once per animation frame.
 		if (!trainMotion.train || trainAnimationPaused) {
 			return
 		}
@@ -1247,6 +1303,7 @@ export function createTrainStationScene(container) {
 		trainMotion.elapsed += frameTime
 
 		if (trainMotion.state === 'entering') {
+			// Arrival: accelerate or brake toward the calculated safe stop speed.
 			const remainingDistance = trainMotion.insidePosition - trainMotion.train.position.x
 			const targetSpeed = getArrivalTargetSpeed(remainingDistance)
 			const speedChangeRate = trainMotion.currentSpeed > targetSpeed
@@ -1275,6 +1332,7 @@ export function createTrainStationScene(container) {
 		}
 
 		if (trainMotion.state === 'stopped') {
+			// Platform stop: hold the train still for a few seconds.
 			trainMotion.train.position.x = trainMotion.insidePosition
 			trainMotion.train.position.y = 0
 
@@ -1286,6 +1344,7 @@ export function createTrainStationScene(container) {
 		}
 
 		if (trainMotion.state === 'leaving') {
+			// Departure: speed up until the train exits the visible track section.
 			trainMotion.currentSpeed = moveValueToward(
 				trainMotion.currentSpeed,
 				trainMotion.cruiseSpeed,
@@ -1305,6 +1364,7 @@ export function createTrainStationScene(container) {
 		}
 
 		if (trainMotion.state === 'outside') {
+			// Outside: wait briefly, then restart the arrival loop.
 			trainMotion.train.position.x = trainMotion.exitPosition
 			trainMotion.train.position.y = 0
 
@@ -1316,10 +1376,12 @@ export function createTrainStationScene(container) {
 
 	let disposed = false
 	loadTrainStationEnvironmentModels().then(({ train, station, forestTreePack, streetLightLamp }) => {
+		// Models load asynchronously; this prevents adding them after dispose().
 		if (disposed) {
 			return
 		}
 
+		// Prepare train size, orientation, surface height, and animation state.
 		orientTrainAlongTracks(train)
 		fitModelToLength(train, 34)
 		groundAndCenterModel(train)
@@ -1331,6 +1393,7 @@ export function createTrainStationScene(container) {
 		updateTrainHeadlightLighting()
 		resetTrainMotion()
 
+		// Prepare station and save it as the target for orbit camera mode.
 		fitModelToLength(station, 24)
 		groundAndCenterModel(station)
 		placeModelOnSurface(station, 0.14)
@@ -1340,6 +1403,7 @@ export function createTrainStationScene(container) {
 		assetGroup.add(station)
 		cinematicCamera.station = station
 
+		// Street lights and forest depend on both the loaded assets and placed station.
 		streetLightEnvironment = createStreetLightEnvironment(streetLightLamp, tracks, station, environmentMode.current)
 		assetGroup.add(streetLightEnvironment)
 		updateStreetLightLighting()
@@ -1349,6 +1413,7 @@ export function createTrainStationScene(container) {
 	})
 
 	function resize() {
+		// Keeps camera aspect and renderer size matched to the responsive container.
 		const { clientWidth, clientHeight } = container
 		if (clientWidth === 0 || clientHeight === 0) {
 			return
@@ -1364,6 +1429,7 @@ export function createTrainStationScene(container) {
 	const clock = new Clock()
 
 	function animate() {
+		// Main render loop: update controls/animation first, then draw the scene.
 		const deltaTime = clock.getDelta()
 		updateKeyboardCamera(deltaTime)
 		updateTrainMotion(deltaTime)
@@ -1380,6 +1446,7 @@ export function createTrainStationScene(container) {
 	const resizeObserver = new ResizeObserver(resize)
 	resizeObserver.observe(container)
 	const handleKeyDown = (event) => {
+		// Keydown starts actions; movement keys remain active until keyup.
 		if (event.code === 'Space') {
 			event.preventDefault()
 			trainAnimationPaused = !trainAnimationPaused
@@ -1421,6 +1488,7 @@ export function createTrainStationScene(container) {
 		}
 	}
 	const handleKeyUp = (event) => {
+		// Keyup releases movement flags so the camera stops moving.
 		if (event.code === 'KeyW') {
 			keyboardState.forward = false
 		}
@@ -1455,6 +1523,7 @@ export function createTrainStationScene(container) {
 		cinematicCamera.isUserControlling = cinematicCamera.mouseControlling || cinematicCamera.keyboardControlling
 	}
 	const handleControlsStart = () => {
+		// Tracks mouse orbit activity so keyboard and mouse control state stay accurate.
 		cinematicCamera.mouseControlling = true
 		cinematicCamera.isUserControlling = true
 	}
@@ -1471,6 +1540,7 @@ export function createTrainStationScene(container) {
 	resize()
 	animate()
 
+	// Returned methods let main.js control modes without touching internal scene state.
 	return {
 		scene,
 		camera,
@@ -1487,6 +1557,7 @@ export function createTrainStationScene(container) {
 		setEnvironmentMode,
 		toggleEnvironmentMode,
 		dispose() {
+			// Stops animation and removes listeners when the scene is no longer needed.
 			disposed = true
 			window.cancelAnimationFrame(frameId)
 			resizeObserver.disconnect()

@@ -11,6 +11,7 @@ import {
 } from 'three'
 
 function createConcreteTexture() {
+  // Draws a repeatable concrete tile texture directly on a canvas.
   const canvas = document.createElement('canvas')
   canvas.width = 1024
   canvas.height = 1024
@@ -53,6 +54,7 @@ function createConcreteTexture() {
 }
 
 function createSignboard(text) {
+  // Groups simple meshes into one station sign object.
   const board = new Group()
 
   const backPlate = new Mesh(
@@ -87,6 +89,7 @@ function createSignboard(text) {
 }
 
 export function createStationPlatform() {
+  // Builds a station platform from basic Three.js shapes.
   const station = new Group()
 
   const concreteTexture = createConcreteTexture()

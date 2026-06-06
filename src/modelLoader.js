@@ -11,6 +11,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 const loader = new GLTFLoader()
 
 function prepareMaterial(material) {
+  // Makes imported model materials render correctly from both sides with proper color.
   material.side = DoubleSide
 
   if (material.map) {
@@ -26,6 +27,7 @@ function prepareMaterial(material) {
 }
 
 export function prepareLoadedModel(root) {
+  // Walks through every mesh in a GLB so shadows and materials are ready for the scene.
   root.traverse((object) => {
     if (!object.isMesh) {
       return
@@ -50,6 +52,7 @@ export function prepareLoadedModel(root) {
 }
 
 export function groundAndCenterModel(model) {
+  // Moves the model pivot to the center and places its bottom at y = 0.
   const bounds = new Box3().setFromObject(model)
   const center = new Vector3()
   bounds.getCenter(center)
@@ -62,12 +65,14 @@ export function groundAndCenterModel(model) {
 }
 
 export function placeModelOnSurface(model, surfaceY) {
+  // Raises or lowers a model so its bottom sits exactly on the requested surface height.
   const bounds = new Box3().setFromObject(model)
   model.position.y += surfaceY - bounds.min.y
   return model
 }
 
 export function fitModelToLength(model, targetLength) {
+  // Uniformly scales the model so its longest horizontal side matches targetLength.
   const bounds = new Box3().setFromObject(model)
   const size = new Vector3()
   bounds.getSize(size)
@@ -81,6 +86,7 @@ export function fitModelToLength(model, targetLength) {
 }
 
 export function orientTrainAlongTracks(model) {
+  // Rotates tall train models so their length follows the local track direction.
   const bounds = new Box3().setFromObject(model)
   const size = new Vector3()
   bounds.getSize(size)
@@ -93,12 +99,14 @@ export function orientTrainAlongTracks(model) {
 }
 
 async function loadGLB(url) {
+  // Loads one GLB file and returns its prepared scene root.
   const gltf = await loader.loadAsync(url)
   const root = gltf.scene || gltf.scenes[0] || new Group()
   return prepareLoadedModel(root)
 }
 
 export async function loadTrainStationEnvironmentModels() {
+  // Loads all external assets together so the scene can place them after one await.
   const [train, station, forestTreePack, streetLightLamp] = await Promise.all([
     loadGLB('/models/train.glb'),
     loadGLB('/models/station.glb'),
@@ -115,6 +123,7 @@ export async function loadTrainStationEnvironmentModels() {
 }
 
 export async function loadTrainAndStationModels() {
+  // Smaller loader kept for cases where only the train and station are needed.
   const [train, station] = await Promise.all([
     loadGLB('/models/train.glb'),
     loadGLB('/models/station.glb'),

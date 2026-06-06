@@ -3,6 +3,7 @@ import { createTrainStationScene } from './scene.js'
 
 const app = document.querySelector('#app')
 
+// Builds the visible page shell and gives Three.js a container to render into.
 app.innerHTML = `
   <main class="page-shell">
     <div class="sidebar-stack">
@@ -72,11 +73,13 @@ app.innerHTML = `
   </main>
 `
 
+// Starts the complete Three.js scene inside the viewport panel.
 const stationScene = createTrainStationScene(document.querySelector('#scene-container'))
 const environmentToggle = document.querySelector('#environment-toggle')
 const viewToggle = document.querySelector('#view-toggle')
 
 function updateEnvironmentToggle(mode) {
+  // Keeps the day/night button text and accessibility state in sync with the scene.
   const isNightMode = mode === 'night'
   environmentToggle.dataset.mode = mode
   environmentToggle.setAttribute('aria-pressed', String(isNightMode))
@@ -87,6 +90,7 @@ function updateEnvironmentToggle(mode) {
 }
 
 function updateViewToggle(mode) {
+  // Keeps the free-camera/orbit button in sync with the current camera behavior.
   const isOrbitMode = mode === 'orbit'
   viewToggle.dataset.mode = mode
   viewToggle.setAttribute('aria-pressed', String(isOrbitMode))
@@ -97,10 +101,12 @@ function updateViewToggle(mode) {
 }
 
 environmentToggle.addEventListener('click', () => {
+  // The scene owns the real mode change; the UI only displays the returned state.
   updateEnvironmentToggle(stationScene.toggleEnvironmentMode())
 })
 
 viewToggle.addEventListener('click', () => {
+  // Toggles between manual OrbitControls and the automatic station orbit camera.
   updateViewToggle(stationScene.toggleCameraMode())
 })
 

@@ -1,6 +1,7 @@
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
 export function createOrbitControls(camera, domElement) {
+  // OrbitControls lets the user rotate, zoom, and pan around the station.
   const controls = new OrbitControls(camera, domElement)
   controls.enableDamping = true
   controls.minDistance = 12
